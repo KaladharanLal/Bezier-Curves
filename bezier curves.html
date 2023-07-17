@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bezier Curves</title>
+    <style>
+        *
+        {
+            margin:0;
+            padding:0;
+            box-sizing:border-box;
+        }
+        body
+        {
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            height: 100%;
+            width: 100%;
+            position: absolute;
+            background:#000000;
+            overflow: hidden;
+        }
+        .point
+        {
+            position: absolute;
+            background: #ffffff;
+            bottom: 10px;
+            left: 10px;
+            height: 50px;
+            width: 50px;
+            border-radius: 50%;
+            z-index: 0;
+        }
+        .point2
+        {
+            position: absolute;
+            background: #ffffff00;
+            bottom: 10px;
+            left: 10px;
+            height: 10px;
+            width: 10px;
+            border:1px solid #ffffff;
+            border-radius: 50%;
+            z-index: 0;
+        }
+        .point3
+        {
+            position: absolute;
+            background: #ffffff;
+            bottom: 10px;
+            left: 10px;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            z-index: 0;
+        }
+        .ctrls
+        {
+            position: absolute;
+            bottom: 1%;
+            left: 50%;
+            height: 10%;
+            width: 20%;
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+        input
+        {
+            position: relative;
+            background: #87878745;
+            color: #ffffff;
+            height: 100%;
+            width: 30%;
+            font-size: larger;
+            text-align: center;
+            border-radius: 10px;
+        }
+        button
+        {
+            position: relative;
+            height: 100%;
+            width: 30%;
+            background: #ffffff00;
+            color: #ffffff;
+            font-size: larger;
+            border-radius: 10px;
+        }
+        .textDisable
+        {
+            /* Disable text selection: https://stackoverflow.com/questions/826782/how-to-disable-text-selection-highlighting */
+            -webkit-touch-callout: none; /* iOS Safari */
+            -webkit-user-select: none; /* Safari */
+            -moz-user-select: none; /* Old versions of Firefox */
+            -ms-user-select: none; /* Internet Explorer/Edge */
+            user-select: none; /* Chrome, Opera and Firefox */
+        }
+    </style>
+</head>
+<body>
+    <div id="points" class="points textDisable"></div>
+    <div class="ctrls textDisable">
+        <button onclick="lesser()">&lt;</button>
+        <input type="text" id="input">
+        <button onclick="greater()">&gt;</button>
+    </div>
+    <script>
+        //INITIALISATION
+        let pointGrp = document.getElementById("points");
+        let input = document.getElementById("input");
+
+        var noPoints = 4;
+        input.value = noPoints
+        const lineDivi = 10;
+        const curveDivi = 20;
+        let points = new Array(noPoints);
+        let points2 = new Array((lineDivi-1)*(noPoints-1));
+        let points3 = new Array(curveDivi-1);
+        let pointsPos = new Array(new Array(noPoints), new Array(noPoints));
+        let pointsPos2 = new Array(new Array(points2.length), new Array(points2.length));
+        let pointsPos3 = new Array(new Array(curveDivi), new Array(curveDivi));
+        var touchPos = [0,0];
+        var touchOffset = [0,0];
+        var initTouchPos = [0,0];
+        var touchedPointNo = 0;
+        var isInitTouch = true;
+        var onHold = false;
+
+        //Variables in getGetCurvePos function
+        var poses = new Array();
+        var x = 0;
+        //Variables in sumTo function
+        var sum = 0;
+
+        //FUNCTIONS
+        function mkpoints()
+        {
+            //Creating points1
+            for(var i=0; i<noPoints; i++)
+            {
+                points[i] = pointGrp.appendChild(document.createElement('div'));
+                points[i].classList.add("point");
+                pointsPos[0][i] = Math.floor(window.innerWidth * (i+1) / (noPoints+1));
+                pointsPos[1][i] = Math.floor(window.innerHeight / 2);
+                points[i].style.left = `${(pointsPos[0][i])-25}px`;
+                points[i].style.bottom = `${(pointsPos[1][i])-25}px`;
+            }
+            //Creating points2
+            for(var i=0; i<noPoints-1; i++)
+            {
+                for(var j=0; j<lineDivi-1; j++)
+                {
+                    points2[(i*lineDivi)+j] = pointGrp.appendChild(document.createElement('div'));
+                    points2[(i*lineDivi)+j].classList.add("point2");
+                    pointsPos2[0][(i*lineDivi)+j] = Math.floor((j+1) * (pointsPos[0][i+1]-pointsPos[0][i])/lineDivi) + pointsPos[0][i];
+                    pointsPos2[1][(i*lineDivi)+j] = Math.floor(window.innerHeight / 2);
+                    points2[(i*lineDivi)+j].style.left = `${(pointsPos2[0][(i*lineDivi)+j])-5}px`;
+                    points2[(i*lineDivi)+j].style.bottom = `${(pointsPos2[1][(i*lineDivi)+j])-5}px`; 
+                }
+            }
+            //Creating points3
+            for(var i=0; i<curveDivi-1; i++)
+            {
+                points3[i] = pointGrp.appendChild(document.createElement('div'));
+                points3[i].classList.add("point3");
+                pointsPos3[0][i] = Math.floor(getCurvePos(0, (i+1)/curveDivi));
+                pointsPos3[1][i] = Math.floor(getCurvePos(1, (i+1)/curveDivi));
+                points3[i].style.left = `${(pointsPos3[0][i])-10}px`;
+                points3[i].style.bottom = `${(pointsPos3[1][i])-10}px`;
+            }
+        }
+
+        function lerp(a, b, t)
+        {
+            return a+((b-a)*t);
+        }
+
+        function sumTo(n)
+        {
+            sum = 0;
+            for(var i=1; i<=n; i++)
+            {
+                sum += i;
+            }
+            return sum;
+        }
+
+        function getCurvePos(coorNo, t)
+        {
+            poses = new Array(sumTo(noPoints-1));
+            x = 0;
+            for(var i=0; i<noPoints-1; i++)
+            {
+                poses[x] = lerp(pointsPos[coorNo][i], pointsPos[coorNo][i+1], t);
+                x++;
+            }
+            for(var i=0; i<noPoints-2; i++)
+            {
+                for(var j=0; j<noPoints-2-i; j++)
+                {
+                    poses[x] = lerp(poses[x-(noPoints-1-i)], poses[x-(noPoints-2-i)], t);
+                    x++;
+                }
+            }
+            return poses[poses.length-1];
+        }
+
+        function update()
+        {
+            //POINTS UPDATE
+            //console.log(`initPos: ${initTouchPos[0]}, ${initTouchPos[1]} touchPos: ${touchPos[0]}, ${touchPos[1]}`)
+            //console.log(points2)
+            if(isInitTouch && onHold)
+            {
+                for(var i=0; i<noPoints; i++)
+                {
+                    if(25 >= Math.sqrt(Math.pow(pointsPos[0][i]-initTouchPos[0],2)+Math.pow(pointsPos[1][i]-initTouchPos[1],2)))
+                    {
+                        touchedPointNo = i+1;
+                        touchOffset = [pointsPos[0][i]-initTouchPos[0], pointsPos[1][i]-initTouchPos[1]]
+                    }
+                }
+                isInitTouch = false;
+                input.classList.add("textDisable");
+            }
+            else if(onHold && touchedPointNo != 0)
+            {
+                //points1 updation
+                pointsPos[0][touchedPointNo-1] = touchOffset[0] + touchPos[0];
+                pointsPos[1][touchedPointNo-1] = touchOffset[1] + touchPos[1];
+                points[touchedPointNo-1].style.left = `${(pointsPos[0][touchedPointNo-1])-25}px`;
+                points[touchedPointNo-1].style.bottom = `${(pointsPos[1][touchedPointNo-1])-25}px`;
+                //points2 updation
+                for(var i=0; i<noPoints-1; i++)
+                {
+                    for(var j=0; j<lineDivi-1; j++)
+                    {
+                        pointsPos2[0][(i*lineDivi)+j] = Math.floor((j+1) * (pointsPos[0][i+1]-pointsPos[0][i])/lineDivi) + pointsPos[0][i];
+                        pointsPos2[1][(i*lineDivi)+j] = Math.floor((j+1) * (pointsPos[1][i+1]-pointsPos[1][i])/lineDivi) + pointsPos[1][i];
+                        points2[(i*lineDivi)+j].style.left = `${(pointsPos2[0][(i*lineDivi)+j])-5}px`;
+                        points2[(i*lineDivi)+j].style.bottom = `${(pointsPos2[1][(i*lineDivi)+j])-5}px`; 
+                    }
+                }
+                //Creating points3
+                for(var i=0; i<curveDivi-1; i++)
+                {
+                    // pointsPos3[0][i] = Math.floor(lerp( lerp(pointsPos[0][0], pointsPos[0][1], (i+1)/curveDivi), lerp(pointsPos[0][1], pointsPos[0][2], (i+1)/curveDivi),  (i+1)/curveDivi ));
+                    // pointsPos3[1][i] = Math.floor(lerp( lerp(pointsPos[1][0], pointsPos[1][1], (i+1)/curveDivi), lerp(pointsPos[1][1], pointsPos[1][2], (i+1)/curveDivi),  (i+1)/curveDivi ));
+                    pointsPos3[0][i] = Math.floor(getCurvePos(0, (i+1)/curveDivi));
+                    pointsPos3[1][i] = Math.floor(getCurvePos(1, (i+1)/curveDivi));
+                    points3[i].style.left = `${(pointsPos3[0][i])-10}px`;
+                    points3[i].style.bottom = `${(pointsPos3[1][i])-10}px`;
+                }
+            }
+            else
+            {
+                touchedPointNo = 0;
+                input.classList.remove("textDisable");
+            }
+        }
+
+        function restart()
+        {
+            pointGrp.replaceChildren()
+
+            if(input.value!="" || input.value!=0)
+            {
+                points = new Array(noPoints);
+                points2 = new Array((lineDivi-1)*(noPoints-1));
+                points3 = new Array(curveDivi-1);
+                pointsPos = new Array(new Array(noPoints), new Array(noPoints));
+                pointsPos2 = new Array(new Array(points2.length), new Array(points2.length));
+                pointsPos3 = new Array(new Array(curveDivi), new Array(curveDivi));
+                touchPos = [0,0];
+                touchOffset = [0,0];
+                initTouchPos = [0,0];
+                touchedPointNo = 0;
+                isInitTouch = true;
+                onHold = false;
+                mkpoints();
+            }
+
+        //Variables in getGetCurvePos function
+        var poses = new Array();
+        var x = 0;
+        //Variables in sumTo function
+        var sum = 0;
+        }
+
+        function greater()
+        {
+            noPoints = ++input.value;
+            restart();
+        }
+        function lesser()
+        {
+            noPoints = --input.value;
+            restart();
+        }
+
+        window.addEventListener('mousedown', (event) => 
+        {
+            onHold = true;
+        });
+        window.addEventListener('mousemove', (event) => 
+        {
+            var e = event;
+            if (e.type == 'mousedown' || e.type == 'mouseup' || e.type == 'mousemove' || e.type == 'mouseover'|| e.type=='mouseout' || e.type=='mouseenter' || e.type=='mouseleave')
+            {
+                x = e.clientX;
+                y = e.clientY;
+            }
+            y = window.innerHeight - y
+            //console.log(x,y)
+            touchPos[0] = x;
+            touchPos[1] = y;
+            if(isInitTouch)
+            {
+                initTouchPos = touchPos;
+            }
+            update();
+        });
+        window.addEventListener('mouseup', (event) => 
+        {
+            onHold = false;
+            isInitTouch = true;
+        });
+
+        window.addEventListener('touchstart', (event) => 
+        {
+            onHold = true;
+        });
+        window.addEventListener('touchmove', (event) => 
+        {
+            var e = event;
+            if(e.type == 'touchstart' || e.type == 'touchmove' || e.type == 'touchend' || e.type == 'touchcancel')
+            {
+                var evt = (typeof e.originalEvent === 'undefined') ? e : e.originalEvent;
+                var touch = evt.touches[0] || evt.changedTouches[0];
+                x = touch.pageX;
+                y = touch.pageY;
+            }
+            y = window.innerHeight - y
+            //console.log(x,y)
+            touchPos[0] = x;
+            touchPos[1] = y;
+            if(isInitTouch)
+            {
+                initTouchPos = touchPos;
+            }
+            update();
+        });
+        window.addEventListener('touchend', (event) => 
+        {
+            onHold = false;
+            isInitTouch = true;
+            touchedPointNo = 0;
+        });
+
+        input.addEventListener('keyup', (event) => 
+        {
+            noPoints = input.value;
+            restart();
+        });
+
+        //Calling initial functions
+        mkpoints()
+    </script>
+</body>
+</html>
